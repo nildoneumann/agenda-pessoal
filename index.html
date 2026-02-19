@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Agenda Pessoal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#007bff">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f2f4f8;
+  margin: 0;
+  padding: 15px;
+}
+
+h1 { text-align: center; }
+
+.container {
+  max-width: 900px;
+  margin: auto;
+  background: white;
+  padding: 15px;
+  border-radius: 10px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+input, textarea, button {
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+
+button {
+  background: #007bff;
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+button:hover { background: #0056b3; }
+button:active { transform: scale(0.95); }
+
+/* CALENDÁRIO */
+.calendar { margin-top: 20px; }
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.day-name {
+  text-align: center;
+  font-weight: bold;
+}
+
+.day {
+  background: #f9f9f9;
+  min-height: 80px;
+  padding: 5px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.day.has-event {
+  background: lightgreen;
+  border-left: 6px solid green;
+  font-weight: bold;
+}
+
+.day.selected {
+  outline: 3px solid #007bff;
+}
+
+.day.today {
+  border: 2px solid #ff9800;
+}
+
+.events { margin-top: 5px; }
+
+.event {
+  background: #f1f1f1;
+  padding: 8px;
+  margin-bottom: 5px;
+  border-radius: 5px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>📅 Agenda Pessoal</h1>
+
+<div class="container">
+
+<div class="form">
+  <input type="date" id="data">
+  <input type="time" id="hora">
+  <textarea id="descricao" placeholder="Descrição"></textarea>
+  <button id="btnSalvar">Salvar</button>
+</div>
+
+<div class="calendar">
+  <div class="calendar-header">
+    <button id="btnAnterior">◀</button>
+    <h3 id="mesAno"></h3>
+    <button id="btnProximo">▶</button>
+  </div>
+
+  <div class="calendar-grid" id="calendar"></div>
+</div>
+
+<div class="events" id="events"></div>
+
+</div>
+
+<script>
+
+let compromissos = JSON.parse(localStorage.getItem("agenda")) || [];
+let editandoId = null;
+
+let hoje = new Date();
+let mesAtual = hoje.getMonth();
+let anoAtual = hoje.getFullYear();
+let diaSelecionado = null;
+
+const nomesMeses = [
+"Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+"Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
+];
+
+const calendar = document.getElementById("calendar");
+const eventsArea = document.getElementById("events");
+const btnSalvar = document.getElementById("btnSalvar");
+
+document.getElementById("btnAnterior").addEventListener("click", mesAnterior);
+document.getElementById("btnProximo").addEventListener("click", proximoMes);
+btnSalvar.addEventListener("click", salvar);
+
+function salvar() {
+
+  const data = document.getElementById("data").value;
+  const hora = document.getElementById("hora").value;
+  const descricao = document.getElementById("descricao").value;
+
+  if (!data || !hora || !descricao) {
+    alert("Preencha tudo");
+    return;
+  }
+
+  if (editandoId) {
+    const item = compromissos.find(c => c.id === editandoId);
+    item.data = data;
+    item.hora = hora;
+    item.descricao = descricao;
+    editandoId = null;
+    btnSalvar.innerText = "Salvar";
+  } else {
+    compromissos.push({
+      id: Date.now(),
+      data,
+      hora,
+      descricao,
+      notificado: false
+    });
+  }
+
+  ordenarCompromissos();
+  salvarStorage();
+  limparFormulario();
+  renderCalendar();
+}
+
+function ordenarCompromissos() {
+  compromissos.sort((a, b) => {
+    if (a.data === b.data) {
+      return a.hora.localeCompare(b.hora);
+    }
+    return a.data.localeCompare(b.data);
+  });
+}
+
+function salvarStorage() {
+  localStorage.setItem("agenda", JSON.stringify(compromissos));
+}
+
+function limparFormulario() {
+  document.getElementById("data").value = "";
+  document.getElementById("hora").value = "";
+  document.getElementById("descricao").value = "";
+}
+
+function renderCalendar() {
+
+  calendar.innerHTML = "";
+  document.getElementById("mesAno").innerText =
+    `${nomesMeses[mesAtual]} ${anoAtual}`;
+
+  const primeiroDia = new Date(anoAtual, mesAtual, 1).getDay();
+  const totalDias = new Date(anoAtual, mesAtual + 1, 0).getDate();
+
+  const diasSemana = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+
+  diasSemana.forEach(nome => {
+    const div = document.createElement("div");
+    div.className = "day-name";
+    div.textContent = nome;
+    calendar.appendChild(div);
+  });
+
+  for (let i = 0; i < primeiroDia; i++) {
+    calendar.appendChild(document.createElement("div"));
+  }
+
+  const hojeStr = new Date().toISOString().split("T")[0];
+
+  for (let dia = 1; dia <= totalDias; dia++) {
+
+    const dataStr = `${anoAtual}-${String(mesAtual+1).padStart(2,"0")}-${String(dia).padStart(2,"0")}`;
+    const temEvento = compromissos.some(c => c.data === dataStr);
+
+    const div = document.createElement("div");
+    div.className = "day";
+    div.textContent = dia;
+
+    if (temEvento) div.classList.add("has-event");
+    if (dataStr === hojeStr) div.classList.add("today");
+
+    div.addEventListener("click", () => selecionarDia(dataStr, div));
+    calendar.appendChild(div);
+  }
+}
+
+function selecionarDia(data, el) {
+  document.querySelectorAll(".day").forEach(d => d.classList.remove("selected"));
+  el.classList.add("selected");
+  diaSelecionado = data;
+  listarEventos();
+}
+
+function listarEventos() {
+
+  eventsArea.innerHTML = "<h3>📌 Compromissos</h3>";
+
+  const eventosDoDia = compromissos.filter(c => c.data === diaSelecionado);
+
+  if (!eventosDoDia.length) {
+    eventsArea.innerHTML += "<p>Nenhum compromisso.</p>";
+    return;
+  }
+
+  eventosDoDia.forEach(c => {
+
+    const div = document.createElement("div");
+    div.className = "event";
+
+    div.innerHTML = `<strong>${c.hora}</strong> - ${c.descricao}<br>`;
+
+    const btnEditar = document.createElement("button");
+    btnEditar.textContent = "✏️ Editar";
+    btnEditar.addEventListener("click", () => editar(c.id));
+
+    const btnExcluir = document.createElement("button");
+    btnExcluir.textContent = "🗑️ Excluir";
+    btnExcluir.addEventListener("click", () => excluir(c.id));
+
+    div.appendChild(btnEditar);
+    div.appendChild(btnExcluir);
+
+    eventsArea.appendChild(div);
+  });
+}
+
+function editar(id) {
+  const c = compromissos.find(c => c.id === id);
+
+  document.getElementById("data").value = c.data;
+  document.getElementById("hora").value = c.hora;
+  document.getElementById("descricao").value = c.descricao;
+
+  editandoId = id;
+  btnSalvar.innerText = "Atualizar";
+}
+
+function excluir(id) {
+  if (!confirm("Excluir compromisso?")) return;
+
+  compromissos = compromissos.filter(c => c.id !== id);
+  salvarStorage();
+  renderCalendar();
+  listarEventos();
+}
+
+function mesAnterior() {
+  mesAtual--;
+  if (mesAtual < 0) {
+    mesAtual = 11;
+    anoAtual--;
+  }
+  renderCalendar();
+}
+
+function proximoMes() {
+  mesAtual++;
+  if (mesAtual > 11) {
+    mesAtual = 0;
+    anoAtual++;
+  }
+  renderCalendar();
+}
+
+/* 🔔 NOTIFICAÇÕES PWA */
+
+// pedir permissão
+if ("Notification" in window && "serviceWorker" in navigator) {
+  Notification.requestPermission();
+}
+
+// função que envia notificação via Service Worker
+async function enviarNotificacao(titulo, corpo) {
+
+  const registration = await navigator.serviceWorker.getRegistration();
+
+  if (registration) {
+    registration.showNotification(titulo, {
+      body: corpo,
+      icon: "icons/icon-192.png",
+      badge: "icons/icon-192.png",
+      vibrate: [200, 100, 200],
+      tag: "lembrete-agenda"
+    });
+  }
+}
+
+// verificação a cada 1 minuto
+setInterval(() => {
+
+  const agora = new Date();
+
+  compromissos.forEach(c => {
+
+    const dataHora = new Date(`${c.data}T${c.hora}`);
+    const diff = dataHora - agora;
+
+    // 10 minutos antes
+    if (diff > 0 && diff <= 600000 && !c.notificado) {
+
+      enviarNotificacao("⏰ Lembrete", `${c.descricao} às ${c.hora}`);
+
+      c.notificado = true;
+      salvarStorage();
+    }
+
+  });
+
+}, 60000);
+
+renderCalendar();
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js")
+    .then(() => console.log("Service Worker registrado"))
+    .catch(err => console.log("Erro SW:", err));
+}
+
+</script>
+</body>
+</html>
+
+
