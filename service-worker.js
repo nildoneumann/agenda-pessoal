@@ -1,4 +1,4 @@
-const CACHE_NAME = "agenda-cache-v1";
+const CACHE_NAME = "agenda-cache-v2";
 
 const urlsToCache = [
   "./",
@@ -43,3 +43,4 @@ self.addEventListener("notificationclick", event => {
     clients.openWindow("./index.html")
   );
 });
+
